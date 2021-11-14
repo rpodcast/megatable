@@ -4,14 +4,100 @@ library(webshot)
 library(robotstxt)
 library(rvest)
 
+# create utility functions for processing enemy / boss data fields
+parse_attack_damage <- function(x) {
+  # split by ; into a list
+  x1 <- purrr::map(stringr::str_split(x, ";"), ~stringr::str_trim(.x))
+  x2 >- purrr::map(x1, ~{
+    # extract number
+    d_points <- stringr::str_extract(.x, "(\\d)+")
+    d_type <- str_extract_all(.x,  "(?<=\\().+?(?=\\))")
+    list(d_points = d_points, d_type = d_type)
+  })
+  return(x2)
+}
+
 # set up data frame for keeping results
 megaman_df <- tibble::tibble(
-  game_index = c(1:8),
-  enemy_url = glue::glue("http://megaman.wikia.com/wiki/List_of_Mega_Man_{index}_Enemies", index = game_index)
+  game_index = c(1:11),
+  enemy_url = glue::glue("http://megaman.wikia.com/wiki/List_of_Mega_Man_{index}_Enemies", index = game_index),
+  enemy_table_index = rep(3, 11),
+  boss_table_index = rep(4, 11)
 )
 
+boss_table_xpath <- '//*[@id="mw-content-text"]/div[1]/table[4]'
+enemy_table_xpath <- '//*[@id="mw-content-text"]/div[1]/table[3]'
 
-url <- "http://megaman.wikia.com/wiki/List_of_Mega_Man_2_Enemies"
+megaman_df2 <- megaman_df %>%
+  mutate(boss_data = purrr::map(enemy_url, ~{
+    browser()
+    tmp <- read_html(.x) %>%
+      html_elements(., xpath = boss_table_xpath) %>%
+      html_elements(., "table") %>%
+      html_elements(., "tbody")
+
+    x_name <- tmp %>%
+      html_elements(., xpath = "tr[1]/td") %>%
+      html_elements("a") %>%
+      html_text() %>%
+      .[2]
+
+    x_pic <- tmp %>%
+      html_elements(., xpath = "tr[1]/td") %>%
+      html_elements("a") %>%
+      html_attr("href") %>%
+      .[1]
+
+    x_data <- tmp %>%
+      html_elements(., xpath = "tr[2]/td") %>%
+      html_elements(., "table") %>%
+      html_table() %>%
+      .[[1]]
+
+    # obtain rows for health points, attack damage, and special weapon
+    x_data2 <- x_data %>%
+      filter(X1 %in% c("Health Points:", "Attack Damage:", "Special Weapon:", "Weakness:")) %>%
+      mutate(X1 = case_when(
+        X1 == "Health Points:" ~ "heath_points",
+        X1 == "Attack Damage:" ~ "attack_damage",
+        X1 == "Special Weapon:" ~ "special_weapon",
+        TRUE ~ "weakness"
+      ))
+    
+
+    x_data$X1
+
+    return(tmp)
+  }))
+
+# mm1 robots masters table
+# //*[@id="mw-content-text"]/div[1]/table[4]
+
+# mm2 robots masters table
+# //*[@id="mw-content-text"]/div[1]/table[4]
+
+# mm6 robots masters table
+# //*[@id="mw-content-text"]/div[1]/table[4]
+
+# mm7 enemies table
+# //*[@id="mw-content-text"]/div[1]/table[2]
+
+# mm7 robot master table
+# //*[@id="mw-content-text"]/div[1]/table[4]
+
+# mm8 robot master table
+# //*[@id="mw-content-text"]/div[1]/table[4]
+
+# mm9
+# //*[@id="mw-content-text"]/div[1]/table[4]
+
+# mm10
+# //*[@id="mw-content-text"]/div[1]/table[4]
+
+# mm11
+# //*[@id="mw-content-text"]/div[1]/table[4]
+
+#url <- "http://megaman.wikia.com/wiki/List_of_Mega_Man_7_Enemies"
 
 enemy_chart_content <- read_html(url)
 
@@ -41,7 +127,7 @@ enemy_chart_content <- read_html(url)
 
 #//*[@id="mw-content-text"]/div[1]/table[3]/tbody/tr[2]/td
 
-# this grabs all of the "tables" in the big table of enemies
+# this grabs all of the "tables" in the big table of enemies in megaman 2
 table_xpath <- '//*[@id="mw-content-text"]/div[1]/table[3]/tbody/tr[2]/td'
 enemy_tables <- html_nodes(enemy_chart_content, xpath = table_xpath) %>%
   html_nodes(., "table") %>%
@@ -62,14 +148,42 @@ enemy_tables <- html_nodes(enemy_chart_content, xpath = table_xpath) %>%
 
 # this blcok gets enemy name and image
 # need href attributes for link to image and then enemy name
-enemy_tables[[1]] %>%
-  html_elements(., xpath = "tr[1]/td") %>%
-  html_elements("a") %>%
-  html_text() # gets text (second element)
-  html_attr("href") # gets hyperlink (first element)
+get_enemy_pic <- function(enemy_table) {
+  enemy_name <- enemy_table %>%
+    html_elements(., xpath = "tr[1]/td") %>%
+    html_elements("a") %>%
+    html_text() %>%
+    .[2]
 
+  enemy_piclink <- enemy_table %>%
+    html_elements(., xpath = "tr[1]/td") %>%
+    html_elements("a") %>%
+    html_attr("href") %>%
+    .[1]
 
-# this blcok gets enemy stats
+  return(list(enemy_name = enemy_name, enemy_piclink = enemy_piclink))
+}
+
+get_enemy_pic(enemy_tables[[1]])
+
+# this block gets enemy stats
+get_enemy_stats <- function(enemy_table) {
+  df <- enemy_table %>%
+    html_elements(., xpath = "tr[2]/td") %>%
+    html_elements(., "table") %>%
+    html_table() %>%
+    .[[1]]
+
+  
+  df2 <- df %>%
+    mutate(X1 = stringr::str_replace_all(X1, ":", "")) %>%
+    mutate(X1 = make_clean_names(X1))
+
+  return(df2)
+}
+
+get_enemy_stats(enemy_tables[[1]])
+
 enemy_tables[[1]] %>%
   html_elements(., xpath = "tr[2]/td") %>%
   html_elements(., "table") %>%
